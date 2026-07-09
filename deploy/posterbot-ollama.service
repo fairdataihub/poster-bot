@@ -5,14 +5,27 @@ After=network.target
 [Service]
 Environment=OLLAMA_HOST=127.0.0.1:27434
 Environment=CUDA_VISIBLE_DEVICES=0
+# CRITICAL: the box sets OLLAMA_VULKAN=true globally; the Vulkan backend IGNORES
+# CUDA_VISIBLE_DEVICES and picked GPU1 (the RTX PRO 6000 research GPU) by free-mem,
+# partially offloading + spilling to CPU. Force CUDA so the device pin holds and
+# the model fully loads onto GPU0 (the 4090). Never touch GPU1.
+Environment=OLLAMA_VULKAN=0
+Environment=GGML_VK_VISIBLE_DEVICES=-1
 Environment=OLLAMA_KEEP_ALIVE=-1
-Environment=OLLAMA_NUM_PARALLEL=2
+Environment=OLLAMA_NUM_PARALLEL=1
 Environment=OLLAMA_MAX_LOADED_MODELS=1
+# pin context so preload and app requests share one loaded instance (no reload);
+# app sends num_ctx to match. 12288 covers 8 posters (~900 tok each) + system + history.
+Environment=OLLAMA_CONTEXT_LENGTH=12288
 ExecStart=/usr/local/bin/ollama serve
 Restart=on-failure
 RestartSec=5
 Nice=10
-MemoryMax=12G
+# The model lives in GPU VRAM, but llama.cpp mmaps the GGUF into RAM (counts
+# against the cgroup) plus CUDA host allocations. A 12G cap thrashed 25G of
+# swap; 32G is generous headroom on a 251G box and never swaps.
+MemoryMax=32G
+MemorySwapMax=0
 
 [Install]
 WantedBy=default.target

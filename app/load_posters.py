@@ -12,6 +12,17 @@ import numpy as np
 import psycopg2
 from psycopg2.extras import Json, execute_values
 
+
+def denul(v):
+    """Recursively strip NUL bytes — PostgreSQL text/jsonb reject 0x00."""
+    if isinstance(v, str):
+        return v.replace("\x00", " ")
+    if isinstance(v, list):
+        return [denul(x) for x in v]
+    if isinstance(v, dict):
+        return {k: denul(x) for k, x in v.items()}
+    return v
+
 ROOT = Path("/storage/posterbot")
 
 
@@ -45,7 +56,7 @@ def main():
     rows, missing, seen_doi = [], [], set()
     with open(ROOT / "scratch/posters.jsonl", encoding="utf-8") as fh:
         for line in fh:
-            r = json.loads(line)
+            r = denul(json.loads(line))
             v = vecs.get(r["poster_key"])
             if v is None:
                 missing.append(r["poster_key"])

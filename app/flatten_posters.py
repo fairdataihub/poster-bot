@@ -40,6 +40,7 @@ def clean_text(s, max_words=None):
     """None-safe: strip, drop junk (<3 chars or <2 letters), optionally cap words."""
     if not s or not isinstance(s, str):
         return None
+    s = s.replace("\x00", " ")          # PostgreSQL text cannot store NUL bytes
     s = " ".join(s.split())
     if len(s) < 3 or len(_alpha.findall(s)) < 2:
         return None

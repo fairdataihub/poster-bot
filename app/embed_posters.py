@@ -25,10 +25,17 @@ os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 SHARDS = Path("/storage/posterbot/shards")
 MAX_SEQ = 3072
-BATCH_TOKEN_BUDGET = 36_000
-MAX_BATCH_DOCS = 256
+# Small fixed-ish batches keep the peak naturally bounded (~6GB, per the smoke
+# test's 16x3072=5.6GB). NO hard per-process memory cap: a hard fraction ceiling
+# turns PyTorch's normal allocator reserve into an OOM (it moved the crash later
+# each time we raised it). GPU0 has ~22GB free with only desktop/media neighbors,
+# so an uncapped ~6-8GB transient embed is well within courtesy limits. The
+# word-based token estimate also undercounts subword-heavy scientific text, so
+# the budget is deliberately conservative.
+BATCH_TOKEN_BUDGET = 12_000
+MAX_BATCH_DOCS = 16
 SHARD_DOCS = 2000
-VRAM_CAP_GB = 8.5
+VRAM_CAP_GB = None
 
 
 def pick_device():
@@ -65,8 +72,9 @@ def main():
 
     use_cuda = dev is not None and torch.cuda.is_available()
     if use_cuda:
-        total_gb = torch.cuda.get_device_properties(0).total_memory / 2**30
-        torch.cuda.set_per_process_memory_fraction(min(1.0, VRAM_CAP_GB / total_gb), 0)
+        if VRAM_CAP_GB is not None:
+            total_gb = torch.cuda.get_device_properties(0).total_memory / 2**30
+            torch.cuda.set_per_process_memory_fraction(min(1.0, VRAM_CAP_GB / total_gb), 0)
     else:
         torch.set_num_threads(16)
 
@@ -121,10 +129,10 @@ def main():
         buf_keys.extend(b[0] for b in batch)
         buf_vecs.append(embs)
         done_n += len(batch)
+        if use_cuda:
+            torch.cuda.empty_cache()          # long-doc batches early: avoid fragmentation
         if len(buf_keys) >= SHARD_DOCS:
             flush()
-            if use_cuda:
-                torch.cuda.empty_cache()
             rate = done_n / (time.time() - t0)
             vram = (f", peak VRAM {torch.cuda.max_memory_allocated(0)/2**30:.1f}G"
                     if use_cuda else "")
