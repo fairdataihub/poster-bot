@@ -5,6 +5,12 @@ versioning follows [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-07-09
+
+First working end-to-end stack: 31,363 posters embedded, indexed, and queryable
+through hybrid retrieval + grounded local-LLM chat. Loopback-only; public
+exposure is a later milestone. Recall@10 = 1.000 vs exact scan; chat latency ~3s.
+
 ### Added
 - pgvector (pg15, 0.8.2) database launcher with loopback-only binding, resource caps,
   read-only serving role, and `posters` schema (metadata + `vector(1024)` + generated tsvector).
@@ -19,4 +25,6 @@ versioning follows [SemVer](https://semver.org).
   SSE chat grounded in top-8 posters via a local ollama model, license-aware
   context (full text only for `allowed`), per-session rate limits, query logging.
 - Dependency-free chat UI with escape-by-default rendering and DOI citation cards.
-- systemd --user units for the dedicated ollama instance and the API.
+- systemd --user units for the dedicated ollama instance and the API
+  (CUDA-pinned to a single GPU, context-length-pinned, generous memory).
+- `recall_check.py` HNSW-vs-exact recall spot-check.
