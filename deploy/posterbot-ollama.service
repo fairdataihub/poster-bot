@@ -1,0 +1,18 @@
+[Unit]
+Description=posterbot dedicated ollama (GPU0, loopback :27434)
+After=network.target
+
+[Service]
+Environment=OLLAMA_HOST=127.0.0.1:27434
+Environment=CUDA_VISIBLE_DEVICES=0
+Environment=OLLAMA_KEEP_ALIVE=-1
+Environment=OLLAMA_NUM_PARALLEL=2
+Environment=OLLAMA_MAX_LOADED_MODELS=1
+ExecStart=/usr/local/bin/ollama serve
+Restart=on-failure
+RestartSec=5
+Nice=10
+MemoryMax=12G
+
+[Install]
+WantedBy=default.target

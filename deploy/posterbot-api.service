@@ -1,0 +1,18 @@
+[Unit]
+Description=posterbot API (FastAPI, loopback :8722)
+After=network.target posterbot-ollama.service
+
+[Service]
+WorkingDirectory=/storage/posterbot/app
+Environment=HF_HUB_OFFLINE=1
+Environment=TRANSFORMERS_OFFLINE=1
+Environment=CUDA_VISIBLE_DEVICES=
+ExecStart=/storage/posterbot/venv/bin/uvicorn app:app --host 127.0.0.1 --port 8722
+Restart=on-failure
+RestartSec=5
+Nice=10
+CPUQuota=400%
+MemoryMax=8G
+
+[Install]
+WantedBy=default.target

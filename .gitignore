@@ -1,0 +1,20 @@
+# secrets — never commit
+.env
+
+# data & artifacts (too large / rebuildable / machine-local)
+pgdata/
+shards/
+scratch/
+backup/
+logs/
+venv/
+*.npz
+*.jsonl
+
+# machine-specific operational notes
+RUNBOOK.local.md
+
+# python
+__pycache__/
+*.pyc
+.pytest_cache/
