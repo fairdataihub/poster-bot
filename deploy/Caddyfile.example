@@ -1,0 +1,26 @@
+# VPS side of Route B. Put this at /etc/caddy/Caddyfile on the relay VPS,
+# replacing the hostname. Caddy auto-provisions a Let's Encrypt cert for the
+# DuckDNS name and reverse-proxies to the reverse-SSH tunnel (loopback:8722),
+# which forwards back to posterbot on hpcf. Caddy is the ONLY public listener.
+
+posterbot.duckdns.org {
+	encode zstd gzip
+
+	# the app streams chat over SSE — disable proxy buffering so tokens flush live
+	reverse_proxy 127.0.0.1:8722 {
+		flush_interval -1
+	}
+
+	# modest hardening headers (the app already escapes output + has no inline JS from users)
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+
+	log {
+		output file /var/log/caddy/posterbot.log
+		format console
+	}
+}

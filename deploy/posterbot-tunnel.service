@@ -1,0 +1,28 @@
+[Unit]
+# hpcf side of Route B: hold an outbound reverse-SSH tunnel to the relay VPS so
+# the VPS's localhost:8722 forwards back to this box's posterbot API. No inbound
+# ports are opened at home. systemd auto-reconnects (no autossh needed).
+Description=posterbot reverse tunnel to relay VPS
+After=network-online.target posterbot-api.service
+Wants=network-online.target
+
+[Service]
+# TUNNEL_TARGET=tunnel@<vps-host-or-ip>  (edit /storage/posterbot/.env.tunnel)
+EnvironmentFile=/storage/posterbot/.env.tunnel
+# -R binds the VPS's 127.0.0.1:8722 only (loopback), so the public internet can
+# reach the app solely through Caddy on the VPS, never the raw tunnel port.
+ExecStart=/usr/bin/ssh -NT \
+  -i %h/.ssh/posterbot_tunnel \
+  -o IdentitiesOnly=yes \
+  -o ExitOnForwardFailure=yes \
+  -o ServerAliveInterval=30 \
+  -o ServerAliveCountMax=3 \
+  -o StrictHostKeyChecking=accept-new \
+  -R 127.0.0.1:8722:127.0.0.1:8722 \
+  ${TUNNEL_TARGET}
+Restart=always
+RestartSec=10
+Nice=10
+
+[Install]
+WantedBy=default.target
