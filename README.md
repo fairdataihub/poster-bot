@@ -1,8 +1,8 @@
 # poster-bot
 
 Semantic search + grounded chat over the [posters.science](https://posters.science)
-corpus — 31,363 machine-actionable scientific posters (Zenodo + Figshare, DataCite 4.6
-schema with poster extensions). Built for demo at BOSC 2026 / CollaborationFest.
+corpus — 31,363 machine-actionable scientific posters (Zenodo + Figshare, DataCite 4.7
+schema, which adds the native `Poster` resource type). Built for demo at BOSC 2026 / CollaborationFest.
 
 Retrieval is pgvector HNSW over [Alibaba-NLP/gte-large-en-v1.5](https://huggingface.co/Alibaba-NLP/gte-large-en-v1.5)
 embeddings (1024-dim, one vector per poster) fused with Postgres full-text search;
