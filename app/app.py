@@ -66,7 +66,10 @@ def startup():
     global pool, model
     pool = psycopg2.pool.ThreadedConnectionPool(
         1, 8, host="127.0.0.1", port=DB_PORT, dbname="posters",
-        user="posterbot_ro", password=ENV["POSTERBOT_RO_PASSWORD"])
+        user="posterbot_ro", password=ENV["POSTERBOT_RO_PASSWORD"],
+        # TCP keepalives so connections idle across a multi-day conference
+        # (or overnight) aren't silently dropped by the OS/postgres.
+        keepalives=1, keepalives_idle=30, keepalives_interval=10, keepalives_count=5)
     import os
     os.environ.setdefault("HF_HUB_OFFLINE", "1")
     os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
@@ -80,17 +83,48 @@ def startup():
     (ROOT / "logs").mkdir(exist_ok=True)
 
 
+def _live_conn():
+    """Return a validated live pooled connection. Stale/severed connections
+    (idle overnight, postgres restart) are pinged with SELECT 1 and discarded
+    before being handed out, so callers never receive a dead socket. Bounded
+    by the pool size + 1 so a fully-stale pool still resolves to a fresh conn."""
+    last = None
+    for _ in range(10):                       # > maxconn (8); covers a fully-stale pool
+        conn = pool.getconn()
+        if conn.closed:
+            pool.putconn(conn, close=True)
+            continue
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+            conn.commit()
+            return conn
+        except psycopg2.Error as e:
+            last = e
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            pool.putconn(conn, close=True)    # discard the dead one, try the next
+    raise last or psycopg2.OperationalError("no live DB connection available")
+
+
 @contextmanager
 def db():
-    conn = pool.getconn()
+    conn = _live_conn()
+    broken = False
     try:
         yield conn
         conn.commit()
     except Exception:
-        conn.rollback()
+        broken = True
+        try:
+            conn.rollback()
+        except Exception:
+            pass
         raise
     finally:
-        pool.putconn(conn)
+        pool.putconn(conn, close=broken or conn.closed != 0)
 
 
 def day():
