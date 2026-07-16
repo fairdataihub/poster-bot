@@ -35,7 +35,7 @@ def env():
     return out
 
 
-COLS = ("poster_key doi repo_id source batch title description subjects creators "
+COLS = ("poster_key doi repo_id source title description subjects creators "
         "creators_text conference_name conference_year publication_year research_field "
         "rights license_class license_blocked n_sections embed_tokens full_text url "
         "embedding").split()
@@ -70,7 +70,7 @@ def main():
                     seen_doi.add(doi)
             emb = "[" + ",".join(f"{x:.7f}" for x in v.tolist()) + "]"
             rows.append((
-                r["poster_key"], doi, r["repo_id"], r["source"], r["batch"],
+                r["poster_key"], doi, r["repo_id"], r["source"],
                 r["title"], r["description"], r["subjects"],
                 Json(r["creators"]) if r["creators"] is not None else None,
                 r["creators_text"], r["conference_name"], r["conference_year"],

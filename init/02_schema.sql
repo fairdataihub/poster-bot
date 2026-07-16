@@ -2,11 +2,10 @@
 -- HNSW / GIN / btree indexes are deliberately deferred to after the bulk load.
 
 CREATE TABLE IF NOT EXISTS posters (
-  poster_key        text PRIMARY KEY,          -- DOI when present, else '<source>/<repo_id>'
+  poster_key        text PRIMARY KEY,          -- DOI when present, else 'posters.science/<id>'
   doi               text UNIQUE,
-  repo_id           text NOT NULL,
-  source            text NOT NULL CHECK (source IN ('zenodo','figshare')),
-  batch             text NOT NULL CHECK (batch IN ('pre2025','data2025')),
+  repo_id           text NOT NULL,             -- posters.science platform id
+  source            text,                      -- zenodo | figshare | other (from DOI suffix)
   title             text,
   description       text,
   subjects          text[],
