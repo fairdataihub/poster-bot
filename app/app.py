@@ -12,6 +12,7 @@ server-side from the DB, and the UI renders via textContent.
 """
 import asyncio
 import json
+import os
 import re
 import secrets
 import time
@@ -26,24 +27,44 @@ from fastapi import FastAPI, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
-ROOT = Path("/storage/posterbot")
-APP = Path(__file__).parent
+APP = Path(__file__).resolve().parent
 
 
-def load_env():
-    out = {}
-    for line in (ROOT / ".env").read_text().splitlines():
-        if "=" in line and not line.startswith("#"):
-            k, v = line.split("=", 1)
-            out[k.strip()] = v.strip()
-    return out
+def _load_dotenv():
+    """Merge an optional .env file into the environment. Container deploys pass
+    config as real env vars (docker-compose), so a missing file is fine; the
+    hpcf host deploy still reads /storage/posterbot/.env."""
+    for cand in (os.environ.get("POSTERBOT_ENV"),
+                 str(APP.parent / ".env"),
+                 "/storage/posterbot/.env"):
+        if cand and Path(cand).is_file():
+            for line in Path(cand).read_text().splitlines():
+                s = line.strip()
+                if s and not s.startswith("#") and "=" in s:
+                    k, v = s.split("=", 1)
+                    os.environ.setdefault(k.strip(), v.strip())
+            break
 
 
-ENV = load_env()
-DB_PORT = int(ENV["POSTERBOT_DB_PORT"])
-LLM_URL = f"http://127.0.0.1:{ENV['POSTERBOT_LLM_PORT']}"
-LLM_MODEL = ENV.get("LLM_MODEL", "")
-EVENT_CODE = ENV.get("EVENT_CODE", "")          # empty => gate disabled (local phase)
+_load_dotenv()
+
+
+def _cfg(key, default=None):
+    return os.environ.get(key, default)
+
+
+DB_HOST = _cfg("POSTERBOT_DB_HOST", "127.0.0.1")
+DB_PORT = int(_cfg("POSTERBOT_DB_PORT", "5445"))
+DB_NAME = _cfg("POSTERBOT_DB_NAME", "posters")
+DB_USER = _cfg("POSTERBOT_DB_USER", "posterbot_ro")
+DB_PASSWORD = _cfg("POSTERBOT_RO_PASSWORD", "")
+# point at the ollama container in compose (POSTERBOT_LLM_URL=http://ollama:11434),
+# else fall back to a loopback host+port for the systemd/host deploy.
+LLM_URL = _cfg("POSTERBOT_LLM_URL") or f"http://127.0.0.1:{_cfg('POSTERBOT_LLM_PORT', '27434')}"
+LLM_MODEL = _cfg("LLM_MODEL", "")
+EVENT_CODE = _cfg("EVENT_CODE", "")             # empty => gate disabled (local phase)
+EMBED_THREADS = int(_cfg("POSTERBOT_EMBED_THREADS", "8"))
+LOG_DIR = Path(_cfg("POSTERBOT_LOG_DIR", str(APP.parent / "logs")))
 
 RRF_K = 60
 TOPK_SEARCH_DEFAULT = 10
@@ -65,22 +86,21 @@ _daily = defaultdict(lambda: defaultdict(int))      # day  -> (sid,kind)/global 
 def startup():
     global pool, model
     pool = psycopg2.pool.ThreadedConnectionPool(
-        1, 8, host="127.0.0.1", port=DB_PORT, dbname="posters",
-        user="posterbot_ro", password=ENV["POSTERBOT_RO_PASSWORD"],
+        1, 8, host=DB_HOST, port=DB_PORT, dbname=DB_NAME,
+        user=DB_USER, password=DB_PASSWORD,
         # TCP keepalives so connections idle across a multi-day conference
         # (or overnight) aren't silently dropped by the OS/postgres.
         keepalives=1, keepalives_idle=30, keepalives_interval=10, keepalives_count=5)
-    import os
     os.environ.setdefault("HF_HUB_OFFLINE", "1")
     os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
     import torch
     from sentence_transformers import SentenceTransformer
-    torch.set_num_threads(8)
+    torch.set_num_threads(EMBED_THREADS)
     model = SentenceTransformer("Alibaba-NLP/gte-large-en-v1.5",
                                 trust_remote_code=True, device="cpu")
     model.max_seq_length = 512                   # queries are short
     model.eval()
-    (ROOT / "logs").mkdir(exist_ok=True)
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _live_conn():
@@ -233,7 +253,7 @@ def log_q(kind, sid, q, keys, extra=None):
            "q": q[:500], "posters": keys}
     if extra:
         rec.update(extra)
-    with open(ROOT / "logs/queries.jsonl", "a", encoding="utf-8") as f:
+    with open(LOG_DIR / "queries.jsonl", "a", encoding="utf-8") as f:
         f.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
 

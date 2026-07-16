@@ -1,0 +1,75 @@
+# posterbot — portable local stack (laptop / any machine with Docker).
+# One command: `docker compose up -d` brings up pgvector + ollama + the API.
+# All ports publish to 127.0.0.1 only. Config comes from .env (see .env.example).
+#
+# NOTE: this compose file is for PORTABLE/LAPTOP deploys. The hpcf host deploy
+# uses up_db.sh + systemd units instead (its docker is snap-confined and can't
+# read compose files outside $HOME).
+name: posterbot
+
+services:
+  db:
+    image: pgvector/pgvector:pg15
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTERBOT_PG_SUPER_PASSWORD:?set in .env}
+      POSTGRES_DB: ${POSTERBOT_DB_NAME:-posters}
+      # consumed by the init script to create the app roles on first boot:
+      POSTERBOT_OWNER_PASSWORD: ${POSTERBOT_OWNER_PASSWORD:?set in .env}
+      POSTERBOT_RO_PASSWORD: ${POSTERBOT_RO_PASSWORD:?set in .env}
+    volumes:
+      - posterbot_pgdata:/var/lib/postgresql/data
+      - ./deploy/local/init-db:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:${POSTERBOT_DB_PORT:-5445}:5432"
+    command: >
+      postgres -c shared_buffers=1GB -c effective_cache_size=2GB
+               -c maintenance_work_mem=512MB -c max_connections=50
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ${POSTERBOT_DB_NAME:-posters}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    environment:
+      OLLAMA_KEEP_ALIVE: "-1"
+    volumes:
+      - ollama_models:/root/.ollama
+    ports:
+      - "127.0.0.1:${POSTERBOT_LLM_PORT:-27434}:11434"
+    # GPU passthrough — needs nvidia-container-toolkit on the host.
+    # No GPU? Delete this deploy: block and ollama runs on CPU (slower).
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  api:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    environment:
+      POSTERBOT_DB_HOST: db
+      POSTERBOT_DB_PORT: "5432"
+      POSTERBOT_DB_NAME: ${POSTERBOT_DB_NAME:-posters}
+      POSTERBOT_DB_USER: ${POSTERBOT_DB_USER:-posterbot_ro}
+      POSTERBOT_RO_PASSWORD: ${POSTERBOT_RO_PASSWORD:?set in .env}
+      POSTERBOT_LLM_URL: http://ollama:11434
+      LLM_MODEL: ${LLM_MODEL:-llama3.2:3b}
+      EVENT_CODE: ${EVENT_CODE:-}
+    ports:
+      - "127.0.0.1:${POSTERBOT_API_PORT:-8722}:8722"
+
+volumes:
+  posterbot_pgdata:
+  ollama_models:

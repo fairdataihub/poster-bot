@@ -5,6 +5,20 @@ versioning follows [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+- **Portable local deployment** (`docker compose`): `Dockerfile` (CPU API image
+  with the embedding model baked in), `docker-compose.yml` (pgvector + ollama +
+  API, all loopback, GPU-optional), first-boot DB init, `scripts/dump.sh` /
+  `scripts/restore.sh` for shipping the built database to another machine,
+  a `Makefile`, and [LOCAL-DEPLOY.md](LOCAL-DEPLOY.md). Runs on an 8GB-VRAM
+  laptop (chat model on GPU, query embedding on CPU). Restore path verified
+  end-to-end against a fresh container.
+- Route B public exposure guide (relay VPS + reverse-SSH tunnel).
+
+### Changed
+- `app.py` config is now fully environment-driven (DB host/port/creds, LLM URL,
+  log dir, model) so the same code runs as a host systemd service or a container.
+
 ## [0.1.0] - 2026-07-09
 
 First working end-to-end stack: 31,363 posters embedded, indexed, and queryable

@@ -1,0 +1,15 @@
+.git
+.env
+.env.tunnel
+venv/
+pgdata/
+shards/
+scratch/
+backup/
+logs/
+*.npz
+*.jsonl
+*.dump
+RUNBOOK.local.md
+__pycache__/
+*.pyc
